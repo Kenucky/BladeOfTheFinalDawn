@@ -31,6 +31,8 @@ class Level1 extends Phaser.Scene {
     this.load.audio('swordSlash', '/assets/audio/sfx/sword_slash.mp3');
     this.load.audio('slimeHit', '/assets/audio/sfx/slime_hit.mp3');
     this.load.audio('playerHurt', '/assets/audio/sfx/player_hurt.mp3');
+    this.load.audio('jump', '/assets/audio/sfx/jump.mp3');
+    this.load.audio('pop', '/assets/audio/sfx/pop.mp3');
   }
 
 
@@ -44,6 +46,9 @@ class Level1 extends Phaser.Scene {
     this.sfxSlash = this.sound.add('swordSlash', { volume: 0.5 });
     this.sfxSlime = this.sound.add('slimeHit',   { volume: 0.7 });
     this.sfxHurt = this.sound.add('playerHurt', { volume: 0.5 });
+    this.jump = this.sound.add('jump',{ volume: 0.5 });
+    this.pop = this.sound.add('pop',{ volume: 0.5 });
+
 
     //STOP MUSIC FROM MAIN MENU
     if (this.game.bgMusic) {
@@ -82,32 +87,28 @@ class Level1 extends Phaser.Scene {
     //ENEMY GROUP SETUP
     this.enemies = this.physics.add.group();
 
-    const slime = this.enemies.create(600, 300, 'slime');
-    const slime2 = this.enemies.create(1534, 496, 'slime');
-    const slime3 = this.enemies.create(1987, 496, 'slime');
-    const slime4 = this.enemies.create(2760, 496, 'slime');
-    const slime5 = this.enemies.create(3349, 496, 'slime');
-    const slime6 = this.enemies.create(3762, 432, 'slime');
-    const slime7 = this.enemies.create(4559, 496, 'slime');
+    const slimePositions = [
+      [600, 300],
+      [1534, 496],
+      [1987, 496],
+      [2842, 499],
+      [3349, 496],
+      [3762, 432],
+      [4559, 496]
+    ];
 
-    //SLIME HEALTH
-    slime.health = 1;
-    slime2.health = 1;
-    slime3.health = 1;
-    slime4.health = 1;
-    slime5.health = 1;
-    slime6.health = 1;
-    slime7.health = 1;
-    
     //SLIME PROPERTIES
-    slime.isDead = false;
-    slime.setCollideWorldBounds(true);
-    slime.setSize(32, 32);
-    slime.setOffset(0, 0);
-  
-    slime.minX = slime.x - 50;
-    slime.maxX = slime.x + 50;
-    slime.patrolDirection = 'left';
+    slimePositions.forEach(pos => {
+      const slime = this.enemies.create(pos[0], pos[1], 'slime');
+      slime.health = 2;
+      slime.isDead = false;
+      slime.setCollideWorldBounds(true);
+      slime.setSize(16,16);
+      slime.setOffset(8,16);
+      slime.minX = slime.x - 50;
+      slime.maxX = slime.x + 50;
+      slime.patrolDirection = 'left';
+    });
     
 
     //PLAYER HEALTH
@@ -138,8 +139,8 @@ class Level1 extends Phaser.Scene {
     this.physics.add.collider(this.enemies, dungeonLayer);
     this.physics.add.overlap(this.player, this.enemies, this.onPlayerHit, null, this);
     this.player.setCollideWorldBounds(true);
-    this.player.setOffset(16, 16);
-    this.player.setSize(32, 32);
+    this.player.setOffset(2, 2);
+    this.player.setSize(9, 25);
 
     //LAYER COLLISIONS
     dungeonLayer.setCollisionBetween(1,500);
@@ -305,8 +306,9 @@ class Level1 extends Phaser.Scene {
   const onGround = this.player.body.onFloor();
   const isFalling = this.player.body.velocity.y > 0;
   const isJumping = this.player.body.velocity.y < 0;
-  console.log('Player X:', this.player.x);
-  console.log('Player Y:', this.player.y);
+    console.log('Player X:', this.player.x);
+      console.log('Player Y:', this.player.y);
+
   
   //PLAYER MOVEMENT
   if (this.cursors.left.isDown) {
@@ -321,10 +323,11 @@ class Level1 extends Phaser.Scene {
   if (Phaser.Input.Keyboard.JustDown(this.cursors.up)) {
     if (onGround || this.jumpCount < this.maxJumps) {
       this.player.setVelocityY(-400);
+      this.jump.play();
       this.jumpCount++;
     }
 }
-
+  //JUMP COUNTER
   if (onGround) {
     this.jumpCount = 0;
   }
@@ -344,11 +347,12 @@ class Level1 extends Phaser.Scene {
     }
   }
 }
-
+  //ATTACK
   if (Phaser.Input.Keyboard.JustDown(this.attackKey) && !this.isAttacking) {
     this.isAttacking = true;
     this.player.setVelocityX(0);
     this.player.play("attack");
+    this.sfxSlash.play();
 
     const offsetX = this.player.flipX ? -30 : 30;
     this.attackHitbox.setPosition(this.player.x + offsetX, this.player.y);
@@ -430,13 +434,11 @@ class Level1 extends Phaser.Scene {
     // Patrol movement
     if (enemy.patrolDirection === 'left') {
       enemy.setVelocityX(-50);
-      //enemy.flipX = false;
       if (enemy.x <= enemy.minX) {
         enemy.patrolDirection = 'right';
       }
     } else {
       enemy.setVelocityX(50);
-      //enemy.flipX = true;
       if (enemy.x >= enemy.maxX) {
         enemy.patrolDirection = 'left';
       }
@@ -448,10 +450,16 @@ class Level1 extends Phaser.Scene {
   }});
   
   //DEADZONE Y CHECK (FOR PLAYER FALLING OFF THE MAP)
-  if (this.player.y > 623&& !this.player.isDead) {
-    console.log("Player fell into pit");
+  if (this.player.y > 621 && !this.player.isDead) {
     this.killPlayer(); 
   }
+  //DEADZONE Y CHECK (FOR ENEMIES FALLING OF THE MAP)
+  this.enemies.getChildren().forEach(enemy => {
+  if (!enemy.isDead && enemy.y > 621) {
+    enemy.isDead = true;
+    enemy.destroy(); 
+  }
+});
 }
 
 checkAttackHit() {
@@ -466,6 +474,7 @@ checkAttackHit() {
     if (hit) {
       this.sfxSlash.play();     // slash sound on each hit
       this.sfxSlime.play();     // add slime squish for flavor
+      this.cameras.main.shake(100, 0.005); // small shake
       enemy.health--;
   
       //add knockback
@@ -489,7 +498,7 @@ checkAttackHit() {
   } else {
     enemy.play('hit-slime');
 
-    // 🔴 Stop knockback after hit animation
+    //stop knockback after hit animation
     enemy.once('animationcomplete-hit-slime', () => {
       if (!enemy.isDead) {
         enemy.setVelocityX(0);
@@ -511,6 +520,7 @@ damagePlayer() {
     if (this.currentHearts > 0) {
       this.currentHearts--;
       this.heartIcons[this.currentHearts].setVisible(false);
+      this.cameras.main.shake(200, 0.01); // slightly stronger shake
     }
 
     if (this.currentHearts <= 0) {
@@ -576,13 +586,8 @@ killPlayer() {
 
 onPlayerHit(player, enemy) {
   if (enemy.isDead || enemy.isHit) return;
-
-  // Optional cooldown so player doesn't get damaged every frame
   if (this.player.invulnerable) return;
-
   this.damagePlayer();
-
-  // Optional: Add invincibility for a moment
   this.player.invulnerable = true;
   this.player.setTint(0xff0000);
   this.time.delayedCall(1000, () => {
@@ -593,12 +598,13 @@ onPlayerHit(player, enemy) {
 
 collectHeart(player, heart) {
     if (this.currentHearts < this.maxHearts) {
-      // Heal the player
+      // add hp
       this.heartIcons[this.currentHearts].setVisible(true);
       this.currentHearts++;
     }
 
-    // Always destroy the heart pickup whether it healed or not
+    // heart pickup dissapears after pickup
+    this.pop.play();
     heart.destroy();
   }
   
@@ -610,7 +616,6 @@ reachGoal(player, door) {
 
   this.scene.start('Level2');
 }
-
 }
 
 
